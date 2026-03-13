@@ -559,7 +559,7 @@ fn svd_regression_issue_1172() {
 }
 
 #[test]
-// Accuracy bug reported in issue #1172 of nalgebra (https://github.com/dimforge/nalgebra/issues/1172)
+// Accuracy bug reported as feedback to PR #1590 of nalgebra (https://github.com/dimforge/nalgebra/issues/1590)
 fn svd_regression_platform_dependent_accuracy() {
     use nalgebra::{Complex, Matrix4};
     type M4C = Matrix4<Complex<f64>>;
