@@ -91,60 +91,14 @@ where
     /// The singular values are not guaranteed to be sorted in any particular order.
     /// If a descending order is required, consider using `new` instead.
     pub fn new_unordered(matrix: OMatrix<T, R, C>, compute_u: bool, compute_v: bool) -> Self {
-        let default_eps = T::RealField::default_epsilon() * crate::convert(5.0);
-
-        if !(compute_u && compute_v) {
-            return Self::try_new_unordered(matrix, compute_u, compute_v, default_eps, 0).unwrap();
-        }
-
-        let original_matrix = matrix.clone();
-        let original_matrix_norm = original_matrix.norm();
-
-        let mut svd =
-            Self::try_new_unordered(matrix, compute_u, compute_v, default_eps.clone(), 0).unwrap();
-        let default_rel_error =
-            Self::relative_recomposition_error(&svd, &original_matrix, &original_matrix_norm);
-
-        // Retry with a tighter epsilon only for clearly unstable decompositions.
-        // This avoids altering behavior for well-conditioned inputs while fixing
-        // platform-dependent failures near rank-deficient cases.
-        let retry_threshold: T::RealField = crate::convert(1.0e-4f64);
-        if default_rel_error > retry_threshold {
-            let retry_eps = T::RealField::default_epsilon();
-
-            if let Some(retry_svd) =
-                Self::try_new_unordered(original_matrix.clone(), compute_u, compute_v, retry_eps, 0)
-            {
-                let retry_rel_error = Self::relative_recomposition_error(
-                    &retry_svd,
-                    &original_matrix,
-                    &original_matrix_norm,
-                );
-                if retry_rel_error < default_rel_error {
-                    svd = retry_svd;
-                }
-            }
-        }
-
-        svd
-    }
-
-    fn relative_recomposition_error(
-        svd: &Self,
-        original_matrix: &OMatrix<T, R, C>,
-        original_matrix_norm: &T::RealField,
-    ) -> T::RealField {
-        let Ok(recomposed_matrix) = svd.clone().recompose() else {
-            return T::RealField::zero();
-        };
-
-        let scale = if original_matrix_norm.clone() > T::RealField::one() {
-            original_matrix_norm.clone()
-        } else {
-            T::RealField::one()
-        };
-
-        (original_matrix.clone() - recomposed_matrix).norm() / scale
+        Self::try_new_unordered(
+            matrix,
+            compute_u,
+            compute_v,
+            T::RealField::default_epsilon() * crate::convert(5.0),
+            0,
+        )
+        .unwrap()
     }
 
     /// Attempts to compute the Singular Value Decomposition of `matrix` using implicit shift.
@@ -216,8 +170,13 @@ where
             norm_sqr += off_diagonal[i].clone() * off_diagonal[i].clone();
         }
         let b_norm = norm_sqr.sqrt();
-        // Use relative epsilon: eps * ||B|| for zero checks
-        let eps_rel = eps.clone() * b_norm;
+        // Use relative epsilon: eps * dim * ||B|| for zero checks.
+        // Scaling by dim accounts for roundoff accumulation in the Householder
+        // reflections during bidiagonalization (similar to LAPACK's N*EPS approach
+        // in DBDSQR). Without this, near-rank-deficient complex matrices can
+        // have bidiagonal elements that are "almost zero" but above the threshold,
+        // leading to numerically unstable iterations on a near-zero subproblem.
+        let eps_rel = eps.clone() * crate::convert::<_, T::RealField>(dim as f64) * b_norm;
 
         let mut niter = 0;
         let (mut start, mut end) = Self::delimit_subproblem(
@@ -444,6 +403,7 @@ where
             if off_diagonal[m].is_zero()
                 || off_diagonal[m].clone().norm1()
                     <= eps.clone() * (diagonal[n].clone().norm1() + diagonal[m].clone().norm1())
+                || off_diagonal[m].clone().norm1() <= eps_rel
             {
                 off_diagonal[m] = T::RealField::zero();
             } else if diagonal[m].clone().norm1() <= eps_rel {
@@ -495,6 +455,7 @@ where
 
             if off_diagonal[m].clone().norm1()
                 <= eps.clone() * (diagonal[new_start].clone().norm1() + diagonal[m].clone().norm1())
+                || off_diagonal[m].clone().norm1() <= eps_rel
             {
                 off_diagonal[m] = T::RealField::zero();
                 break;
