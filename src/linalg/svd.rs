@@ -398,6 +398,7 @@ where
             if off_diagonal[m].is_zero()
                 || off_diagonal[m].clone().norm1()
                     <= eps.clone() * (diagonal[n].clone().norm1() + diagonal[m].clone().norm1())
+                || off_diagonal[m].clone().norm1() <= eps_rel
             {
                 off_diagonal[m] = T::RealField::zero();
             } else if diagonal[m].clone().norm1() <= eps_rel {
@@ -449,6 +450,7 @@ where
 
             if off_diagonal[m].clone().norm1()
                 <= eps.clone() * (diagonal[new_start].clone().norm1() + diagonal[m].clone().norm1())
+                || off_diagonal[m].clone().norm1() <= eps_rel
             {
                 off_diagonal[m] = T::RealField::zero();
                 break;
